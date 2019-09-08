@@ -5,10 +5,13 @@
 #include <stdio.h>
 #include <iostream>
 #include <fcntl.h>
+#include <boost/algorithm/string.hpp>
 #include "utilities.h"
+#include "functionalities.h"
 
 #define MAXBUFSIZE (10000)
 using namespace std;
+using namespace boost;
 
 struct termios curterm, saved_attributes;
 void set_input_mode();
@@ -22,12 +25,14 @@ int main()
     set_input_mode();
     char buf[MAXBUFSIZE];
     char c;
-    string command, prm="";
+    string cmd, prm="";
     size_t top;
-    bool flag;
+    int no_pipes;
+    bool flag, bg, rdr;
     top = 0;
+    set_shell();
     while(true) {
-		prm = create_terminal();
+		prm = create_terminal();bg=false,no_pipes=0,rdr=false;
 		write(STDOUT_FILENO, prm.c_str(), prm.size());
         while (read(STDIN_FILENO, &c, sizeof c) == 1) {
 			flag = false;
@@ -37,35 +42,57 @@ int main()
                     --top;
                     const char delbuf[] = "\b \b";
                     write(STDOUT_FILENO, delbuf, strlen(delbuf));
+                    if(buf[top]=='|') no_pipes--;
+                    if(buf[top]=='&') bg=false;
+                    if(buf[top]=='>') rdr=false;
                 }
                 break;
             case 10:
                 write(STDOUT_FILENO, &c, sizeof c);
                 buf[top]='\0';
                 //write(STDOUT_FILENO, buf, top);
-                command.assign(buf);
+                cmd.assign(buf);
                 write_history(buf,top);
                 top = 0;
                 flag = true;
                 break;
             case 9:
                 //call trie DS//
-                write(STDOUT_FILENO, buf, top);
+                //write(STDOUT_FILENO, buf, top);
                 break;
             default:
                 buf[top++] = c;
                 write(STDOUT_FILENO, &c, sizeof c);
+                if(c=='|') no_pipes++;
+                if(c=='&') bg=true;
+                if(c=='>') rdr=true;
                 break;
             }
             if(flag) break;
         }
-        if(command=="exit"){
+        if(cmd=="exit"){
 			reset_input_mode();
 			break;
 		}
-		else if (command=="history"){
+		else if (cmd=="history"){
 			read_history();
 			top=0;
+		}
+		else if (cmd.substr(0, 5) == "alias" ){
+			string temp;
+			temp = cmd.substr(6);
+			trim(temp);
+			int index = temp.find("=");
+			string key = temp.substr(0, index); //function
+			string value = temp.substr(temp.find("\'")+1);
+			value.pop_back();
+			ali[key] = value;
+		}
+		else{
+			if(rdr)
+				parse_command_redirect(no_pipes,cmd);
+			else
+				parse_command_pipe(no_pipes,cmd);
 		}
     }
     return 0;
@@ -76,6 +103,7 @@ void set_input_mode() {
 	tcgetattr(STDIN_FILENO, &saved_attributes);
     tcgetattr(STDIN_FILENO, &curterm);
     curterm.c_lflag &= ~(ICANON| ECHO);
+    curterm.c_lflag &= TOSTOP;
     curterm.c_cc[VTIME] = 0;
     curterm.c_cc[VMIN] = 1;
     tcsetattr(STDIN_FILENO, TCSANOW, &curterm);
@@ -106,4 +134,3 @@ void read_history(){
 	write(STDOUT_FILENO, buf, size);
 	close(read_head);
 }
-
