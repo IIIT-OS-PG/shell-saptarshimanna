@@ -16,14 +16,25 @@
 using namespace std;
 using namespace boost;
 
+bool value_exist_alias(string);
+
 void parse_command_pipe(int count, string cmd){
 	//cmd="ls -al | grep rc | wc -l";
 	vector<string> parsed_cmd;int i=0,j=0,k=0,pid,status;
 	split(parsed_cmd,cmd,is_any_of(" "));
+
 	int pipe_fd[2*count];
 	while(i<count){
 		pipe(pipe_fd+2*i);
 		i++;
+	}
+
+	if(value_exist_alias(parsed_cmd[0])){
+		string val = ali[parsed_cmd[0]];
+		vector<string> templst;
+		split(templst,val,is_any_of(" "));
+		parsed_cmd.erase(parsed_cmd.begin());
+		parsed_cmd.insert(parsed_cmd.begin(),templst.begin(),templst.end());
 	}
 
 	char* arg[30];
@@ -131,6 +142,31 @@ void parse_command_redirect(int count, string cmd){
 	for(i=0;i<=count;i++){
 		wait(&status);
 	}
+}
+void parse_command_bg(int count, string cmd){
+	//cmd="ls -al | grep rc | wc -l";
+	vector<string> parsed_cmd;int i=0,pid,status;
+	split(parsed_cmd,cmd,is_any_of(" "));
+
+	char* arg[30];
+	for(i=0; i<parsed_cmd.size();i++){
+		arg[i]=new char[parsed_cmd.size()];
+		parsed_cmd[i].copy(arg[i],parsed_cmd[i].size());
+	}
+	arg[i]=NULL;
+	pid=fork();
+	if(pid==0){
+		setpgid(0, 0);
+		execvp(arg[0],arg);
+	}
+}
+
+bool value_exist_alias(string key){
+	if (ali.find(key) == ali.end()){
+		return false;
+	}
+	else
+		return true;
 }
 
 #endif

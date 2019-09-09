@@ -18,11 +18,14 @@ void set_input_mode();
 void reset_input_mode();
 void write_history(char*,int);
 void read_history();
+void alarm_reminder(int);
+void find_alias(int);
 int historyno=1;
 
 int main()
 {
     set_input_mode();
+    signal(SIGALRM,alarm_reminder);
     char buf[MAXBUFSIZE];
     char c;
     string cmd, prm="";
@@ -83,16 +86,40 @@ int main()
 			temp = cmd.substr(6);
 			trim(temp);
 			int index = temp.find("=");
-			string key = temp.substr(0, index); //function
-			string value = temp.substr(temp.find("\'")+1);
-			value.pop_back();
+			find_alias(no_pipes);
+			string key = temp.substr(0, index-1); //function
+			string value = temp.substr(index+2);
 			ali[key] = value;
+		}
+		else if (cmd.substr(0,2)=="fg"){
+			int chd = stoi(cmd.substr(3));
+			tcsetpgrp(0, chd);
+			kill(chd, SIGCONT);
+			int status;
+			wait(&status);
+		}
+		else if(cmd.substr(0,5)=="alarm"){
+			alarm(stoi(cmd.substr(6)));
+		}
+		else if(cmd.substr(0,2)=="cd"){
+			chdir(cmd.substr(3).c_str());
+		}
+		else if(cmd.substr(0,4)=="echo" && (cmd.substr(5)=="$$" || cmd.substr(5)=="$HOME" || cmd.substr(5)=="$PATH" || cmd.substr(5)=="$PWD" || cmd.substr(5)=="$USER")){
+			string str = ali[cmd.substr(5)];
+			write(STDOUT_FILENO, str.c_str(), str.size());
+			char ctr[] ={'\n'};
+			write(STDOUT_FILENO, ctr, 2);
 		}
 		else{
 			if(rdr)
 				parse_command_redirect(no_pipes,cmd);
-			else
+			else if(bg){
+				cmd.replace(cmd.find("&"),1,"");
+				parse_command_bg(no_pipes,cmd);
+			}
+			else{
 				parse_command_pipe(no_pipes,cmd);
+			}
 		}
     }
     return 0;
@@ -102,8 +129,9 @@ void set_input_mode() {
 
 	tcgetattr(STDIN_FILENO, &saved_attributes);
     tcgetattr(STDIN_FILENO, &curterm);
-    curterm.c_lflag &= ~(ICANON| ECHO);
-    curterm.c_lflag &= TOSTOP;
+    curterm.c_lflag &= ~(ICANON|ECHO);
+    curterm.c_lflag |= (TOSTOP);
+    //parse_command_pipe(0,"stty tostop");
     curterm.c_cc[VTIME] = 0;
     curterm.c_cc[VMIN] = 1;
     tcsetattr(STDIN_FILENO, TCSANOW, &curterm);
@@ -120,7 +148,6 @@ void write_history(char* buf,int size){
 	buf[size]='\n';
     buf[size+1]='\0';
 	write_head = open("./myrc_history", O_WRONLY | O_CREAT | O_APPEND, 0666);
-	if(write_head == -1) throw "write history failed";
 	write (write_head, buf, size+1);
 	close(write_head);
 }
@@ -129,8 +156,25 @@ void read_history(){
 	int read_head, size;
 	char buf[1024];
 	read_head = open ("./myrc_history", O_RDONLY);
-	if(read_head == -1) throw "reading history failed";
 	size=read (read_head, &buf, 1024);
 	write(STDOUT_FILENO, buf, size);
 	close(read_head);
 }
+
+void alarm_reminder(int x){
+	write(STDOUT_FILENO,"Reminded\n",10);
+}
+
+void find_alias(int count){
+	string cmd ="echo $HOME $PATH $USER";
+	char arg[60]; char argv[30]; int j,i;
+	for(i=0; i<cmd.size(); i++){
+		arg[i]=cmd[i];
+		j=100;
+		while(j!=0){
+			j--;
+		}
+	}
+	arg[i]='\0';
+}
+
